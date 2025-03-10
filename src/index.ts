@@ -8,6 +8,7 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import axios from 'axios';
+import { processAssignments } from './utils/moodle-processors.js';
 
 // Configuración de variables de entorno
 const MOODLE_API_URL = process.env.MOODLE_API_URL;
@@ -320,13 +321,14 @@ class MoodleMcpServer {
       },
     });
 
-    const assignments = response.data.courses[0]?.assignments || [];
+    // Use the utility function to process and simplify assignments data
+    const processedAssignments = processAssignments(response.data);
     
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify(assignments, null, 2),
+          text: JSON.stringify(processedAssignments, null, 2),
         },
       ],
     };
