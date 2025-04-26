@@ -2,6 +2,10 @@
 
 An MCP (Model Context Protocol) server that enables LLMs to interact with the Moodle platform to manage courses, students, assignments, and quizzes.
 
+<a href="https://glama.ai/mcp/servers/@peancor/moodle-mcp-server">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@peancor/moodle-mcp-server/badge" alt="Moodle Server MCP server" />
+</a>
+
 ## Features
 
 ### Student Management Tools
