@@ -113,7 +113,7 @@ class MoodleMcpServer {
     });
 
     this.setupToolHandlers();
-    
+
     // Error handling
     this.server.onerror = (error) => console.error('[MCP Error]', error);
     process.on('SIGINT', async () => {
@@ -125,6 +125,28 @@ class MoodleMcpServer {
   private setupToolHandlers() {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
+        {
+          name: 'get_courses',
+          description: 'Obtiene información de cursos en Moodle. Soporta paginación o búsqueda por ID.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              courseId: {
+                type: 'number',
+                description: 'ID opcional del curso. Si se proporciona, solo devuelve ese curso.',
+              },
+              page: {
+                type: 'number',
+                description: 'Número de página para resultados (por defecto 0). Ignorado si se da courseId.',
+              },
+              limit: {
+                type: 'number',
+                description: 'Cantidad de cursos a devolver por página (por defecto 10). Ignorado si se da courseId.',
+              }
+            },
+            required: [],
+          },
+        },
         {
           name: 'get_students',
           description: 'Obtiene la lista de estudiantes inscritos en el curso configurado',
@@ -237,9 +259,11 @@ class MoodleMcpServer {
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       console.error(`[Tool] Executing tool: ${request.params.name}`);
-      
+
       try {
         switch (request.params.name) {
+          case 'get_courses':
+            return await this.getCourses(request.params.arguments);
           case 'get_students':
             return await this.getStudents();
           case 'get_assignments':
@@ -267,9 +291,8 @@ class MoodleMcpServer {
             content: [
               {
                 type: 'text',
-                text: `Moodle API error: ${
-                  error.response?.data?.message || error.message
-                }`,
+                text: `Moodle API error: ${error.response?.data?.message || error.message
+                  }`,
               },
             ],
             isError: true,
@@ -280,9 +303,42 @@ class MoodleMcpServer {
     });
   }
 
+  private async getCourses(args: any = {}) {
+    const courseId = args?.courseId;
+    const page = args?.page || 0;
+    const limit = args?.limit || 10;
+
+    if (courseId) {
+      console.error(`[API] Requesting course ${courseId}`);
+      const response = await this.axiosInstance.get('', {
+        params: {
+          wsfunction: 'core_course_get_courses',
+          'options[ids][0]': courseId,
+        },
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(response.data || [], null, 2) }],
+      };
+    } else {
+      console.error(`[API] Requesting courses (page: ${page}, limit: ${limit})`);
+      const response = await this.axiosInstance.get('', {
+        params: {
+          wsfunction: 'core_course_search_courses',
+          criterianame: 'search',
+          criteriavalue: ' ', // required
+          page: page,
+          perpage: limit,
+        },
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(response.data || [], null, 2) }],
+      };
+    }
+  }
+
   private async getStudents() {
     console.error('[API] Requesting enrolled users');
-    
+
     const response = await this.axiosInstance.get('', {
       params: {
         wsfunction: 'core_enrol_get_enrolled_users',
@@ -312,7 +368,7 @@ class MoodleMcpServer {
 
   private async getAssignments() {
     console.error('[API] Requesting assignments');
-    
+
     const response = await this.axiosInstance.get('', {
       params: {
         wsfunction: 'mod_assign_get_assignments',
@@ -321,7 +377,7 @@ class MoodleMcpServer {
     });
 
     const assignments = response.data.courses[0]?.assignments || [];
-    
+
     return {
       content: [
         {
@@ -334,7 +390,7 @@ class MoodleMcpServer {
 
   private async getQuizzes() {
     console.error('[API] Requesting quizzes');
-    
+
     const response = await this.axiosInstance.get('', {
       params: {
         wsfunction: 'mod_quiz_get_quizzes_by_courses',
@@ -343,7 +399,7 @@ class MoodleMcpServer {
     });
 
     const quizzes = response.data.quizzes || [];
-    
+
     return {
       content: [
         {
@@ -357,9 +413,9 @@ class MoodleMcpServer {
   private async getSubmissions(args: any) {
     const studentId = args.studentId;
     const assignmentId = args.assignmentId;
-    
+
     console.error(`[API] Requesting submissions${studentId ? ` for student ${studentId}` : ''}`);
-    
+
     // Primero obtenemos todas las tareas
     const assignmentsResponse = await this.axiosInstance.get('', {
       params: {
@@ -369,12 +425,12 @@ class MoodleMcpServer {
     });
 
     const assignments = assignmentsResponse.data.courses[0]?.assignments || [];
-    
+
     // Si se especificó un ID de tarea, filtramos solo esa tarea
     const targetAssignments = assignmentId
       ? assignments.filter((a: any) => a.id === assignmentId)
       : assignments;
-    
+
     if (targetAssignments.length === 0) {
       return {
         content: [
@@ -396,7 +452,7 @@ class MoodleMcpServer {
       });
 
       const submissions = submissionsResponse.data.assignments[0]?.submissions || [];
-      
+
       // Obtenemos las calificaciones para esta tarea
       const gradesResponse = await this.axiosInstance.get('', {
         params: {
@@ -406,16 +462,16 @@ class MoodleMcpServer {
       });
 
       const grades = gradesResponse.data.assignments[0]?.grades || [];
-      
+
       // Si se especificó un ID de estudiante, filtramos solo sus entregas
       const targetSubmissions = studentId
         ? submissions.filter((s: any) => s.userid === studentId)
         : submissions;
-      
+
       // Procesamos cada entrega
       const processedSubmissions = targetSubmissions.map((submission: any) => {
         const studentGrade = grades.find((g: any) => g.userid === submission.userid);
-        
+
         return {
           userid: submission.userid,
           status: submission.status,
@@ -423,7 +479,7 @@ class MoodleMcpServer {
           grade: studentGrade ? studentGrade.grade : 'No calificado',
         };
       });
-      
+
       return {
         assignment: assignment.name,
         assignmentId: assignment.id,
@@ -432,7 +488,7 @@ class MoodleMcpServer {
     });
 
     const results = await Promise.all(submissionsPromises);
-    
+
     return {
       content: [
         {
@@ -452,7 +508,7 @@ class MoodleMcpServer {
     }
 
     console.error(`[API] Providing feedback for student ${args.studentId} on assignment ${args.assignmentId}`);
-    
+
     const response = await this.axiosInstance.get('', {
       params: {
         wsfunction: 'mod_assign_save_grade',
@@ -491,7 +547,7 @@ class MoodleMcpServer {
     }
 
     console.error(`[API] Requesting submission content for student ${args.studentId} on assignment ${args.assignmentId}`);
-    
+
     try {
       // Utilizamos la función mod_assign_get_submission_status para obtener el contenido detallado
       const response = await this.axiosInstance.get('', {
@@ -505,11 +561,11 @@ class MoodleMcpServer {
       // Procesamos la respuesta para extraer el contenido relevante
       const submissionData = response.data.submission || {};
       const plugins = response.data.lastattempt?.submission?.plugins || [];
-      
+
       // Extraemos el texto de la entrega y los archivos adjuntos
       let submissionText = '';
       const files = [];
-      
+
       for (const plugin of plugins) {
         // Procesamos el plugin de texto en línea
         if (plugin.type === 'onlinetext') {
@@ -518,7 +574,7 @@ class MoodleMcpServer {
             submissionText = textField.text || '';
           }
         }
-        
+
         // Procesamos el plugin de archivos
         if (plugin.type === 'file') {
           const filesList = plugin.fileareas?.find((area: any) => area.area === 'submission_files');
@@ -534,7 +590,7 @@ class MoodleMcpServer {
           }
         }
       }
-      
+
       // Construimos el objeto de respuesta
       const submissionContent = {
         assignment: args.assignmentId,
@@ -553,7 +609,7 @@ class MoodleMcpServer {
         ],
         timemodified: submissionData.timemodified || 0,
       };
-      
+
       return {
         content: [
           {
@@ -569,9 +625,8 @@ class MoodleMcpServer {
           content: [
             {
               type: 'text',
-              text: `Error al obtener el contenido de la entrega: ${
-                error.response?.data?.message || error.message
-              }`,
+              text: `Error al obtener el contenido de la entrega: ${error.response?.data?.message || error.message
+                }`,
             },
           ],
           isError: true,
@@ -590,7 +645,7 @@ class MoodleMcpServer {
     }
 
     console.error(`[API] Requesting quiz grade for student ${args.studentId} on quiz ${args.quizId}`);
-    
+
     try {
       const response = await this.axiosInstance.get('', {
         params: {
@@ -607,7 +662,7 @@ class MoodleMcpServer {
         hasGrade: response.data.hasgrade,
         grade: response.data.hasgrade ? response.data.grade : 'No calificado',
       };
-      
+
       return {
         content: [
           {
@@ -623,9 +678,8 @@ class MoodleMcpServer {
           content: [
             {
               type: 'text',
-              text: `Error al obtener la calificación del quiz: ${
-                error.response?.data?.message || error.message
-              }`,
+              text: `Error al obtener la calificación del quiz: ${error.response?.data?.message || error.message
+                }`,
             },
           ],
           isError: true,

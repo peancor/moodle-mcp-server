@@ -4,6 +4,11 @@ An MCP (Model Context Protocol) server that enables LLMs to interact with the Mo
 
 ## Features
 
+### Course Management Tools
+- `get_courses` - Retrieves information about courses in Moodle
+  - Supports pagination (`page`, `limit`) to safely fetch all available courses.
+  - Optionally allows fetching a specific course by providing a `courseId`.
+
 ### Student Management Tools
 - `list_students` - Retrieves the list of students enrolled in the course
   - Displays ID, name, email, and last access time for each student
