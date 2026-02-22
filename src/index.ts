@@ -126,6 +126,28 @@ class MoodleMcpServer {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
+          name: 'get_courses',
+          description: 'Obtiene información de cursos en Moodle. Soporta paginación o búsqueda por ID.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              courseId: {
+                type: 'number',
+                description: 'ID opcional del curso. Si se proporciona, solo devuelve ese curso.',
+              },
+              page: {
+                type: 'number',
+                description: 'Número de página para resultados (por defecto 0). Ignorado si se da courseId.',
+              },
+              limit: {
+                type: 'number',
+                description: 'Cantidad de cursos a devolver por página (por defecto 10). Ignorado si se da courseId.',
+              }
+            },
+            required: [],
+          },
+        },
+        {
           name: 'get_students',
           description: 'Obtiene la lista de estudiantes inscritos en el curso configurado',
           inputSchema: {
@@ -240,6 +262,8 @@ class MoodleMcpServer {
 
       try {
         switch (request.params.name) {
+          case 'get_courses':
+            return await this.getCourses(request.params.arguments);
           case 'get_students':
             return await this.getStudents();
           case 'get_assignments':
@@ -277,6 +301,39 @@ class MoodleMcpServer {
         throw error;
       }
     });
+  }
+
+  private async getCourses(args: any = {}) {
+    const courseId = args?.courseId;
+    const page = args?.page || 0;
+    const limit = args?.limit || 10;
+
+    if (courseId) {
+      console.error(`[API] Requesting course ${courseId}`);
+      const response = await this.axiosInstance.get('', {
+        params: {
+          wsfunction: 'core_course_get_courses',
+          'options[ids][0]': courseId,
+        },
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(response.data || [], null, 2) }],
+      };
+    } else {
+      console.error(`[API] Requesting courses (page: ${page}, limit: ${limit})`);
+      const response = await this.axiosInstance.get('', {
+        params: {
+          wsfunction: 'core_course_search_courses',
+          criterianame: 'search',
+          criteriavalue: ' ', // required
+          page: page,
+          perpage: limit,
+        },
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(response.data || [], null, 2) }],
+      };
+    }
   }
 
   private async getStudents() {
